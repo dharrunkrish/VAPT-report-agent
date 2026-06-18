@@ -1,0 +1,15 @@
+{
+  "target": "example.com",
+  "findings": [
+    {
+      "endpoint": "/api/user/123",
+      "observation": "Changing the numeric user ID exposes another user's data.",
+      "evidence": "IDOR confirmed by modifying user identifiers."
+    },
+    {
+      "endpoint": "/api/search?q=test",
+      "observation": "Unsanitized search parameter causes backend query manipulation.",
+      "evidence": "Error-based responses and result differences observed with crafted input."
+    }
+  ]
+}

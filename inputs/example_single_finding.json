@@ -1,0 +1,10 @@
+{
+  "target": "example.com",
+  "finding": {
+    "endpoint": "/api/user/123",
+    "observation": "The application does not enforce strong password requirements at the backend for forgot password and reset password functionalities.",
+    "evidence": "it was observed that by directly interacting with the API endpoint, users can bypass UI restrictions and set weak and easily guessable passwords.",
+    "notes": "This indicates that password policy enforcement is not implemented on the server side",
+    "request_evidence": "POST /auth/accounts/dbcddca3-c040-41a0-95fa-83149935d065/set-password-by-token"
+  }
+}
