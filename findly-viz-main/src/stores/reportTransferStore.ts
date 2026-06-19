@@ -1,17 +1,22 @@
-import type { GenerateReportRequest } from "@/services/reportApi";
+import type { Finding } from "@/store/findingsStore";
 
 const STORAGE_KEY = "vapt-transfer-payload-v1";
 
 type Listener = () => void;
 
-let pendingTransfer: GenerateReportRequest | null = null;
+export interface TransferPayload {
+  target: string;
+  finding: Finding;
+}
+
+let pendingTransfer: TransferPayload | null = null;
 const listeners = new Set<Listener>();
 
-function readStored(): GenerateReportRequest | null {
+function readStored(): TransferPayload | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as GenerateReportRequest) : null;
+    return raw ? (JSON.parse(raw) as TransferPayload) : null;
   } catch {
     return null;
   }
@@ -21,7 +26,7 @@ function notify() {
   listeners.forEach((listener) => listener());
 }
 
-export function setTransferPayload(payload: GenerateReportRequest) {
+export function setTransferPayload(payload: TransferPayload) {
   pendingTransfer = payload;
   if (typeof window !== "undefined") {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -29,7 +34,7 @@ export function setTransferPayload(payload: GenerateReportRequest) {
   notify();
 }
 
-export function consumeTransferPayload(): GenerateReportRequest | null {
+export function consumeTransferPayload(): TransferPayload | null {
   const payload = pendingTransfer ?? readStored();
   pendingTransfer = null;
   if (typeof window !== "undefined") {
@@ -39,7 +44,7 @@ export function consumeTransferPayload(): GenerateReportRequest | null {
   return payload;
 }
 
-export function peekTransferPayload(): GenerateReportRequest | null {
+export function peekTransferPayload(): TransferPayload | null {
   return pendingTransfer ?? readStored();
 }
 

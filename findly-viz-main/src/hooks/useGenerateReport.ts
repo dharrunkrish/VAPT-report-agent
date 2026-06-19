@@ -2,12 +2,14 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  generateFullReport,
+  generateReport,
   reportToMarkdownText,
   type GenerateReportRequest,
   type GenerateReportResponse,
   ReportApiError,
 } from "@/services/reportApi";
+import { findingToApiPayload } from "@/lib/findingsJson";
+import type { Finding } from "@/store/findingsStore";
 
 const STORAGE_KEY = "vapt-generated-report-v1";
 const MARKDOWN_KEY = "vapt-generated-markdown-v1";
@@ -29,47 +31,57 @@ export function useGenerateReport() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const generate = useCallback(async (payload: GenerateReportRequest) => {
-    setIsLoading(true);
-    setError(null);
+  const generateFromFindings = useCallback(
+    async (target: string, findings: Finding[]) => {
+      if (!target.trim()) throw new Error("Target is required");
+      if (findings.length === 0) throw new Error("Add at least one finding");
 
-    try {
-      const finding = payload.finding ?? {
-        endpoint: "",
-        observation: "",
-        evidence: "",
-        notes: payload.findings?.[0]?.notes,
-        request_evidence: payload.findings?.[0]?.request_evidence,
-        ...payload.findings?.[0],
-      };
+      setIsLoading(true);
+      setError(null);
 
-      const result = await generateFullReport({
-        target: payload.target,
-        findings: [finding],
-        section_prefix: payload.section_prefix,
-      });
+      try {
+        const result = await generateReport({
+          target,
+          findings: findings.map(findingToApiPayload),
+        });
 
-      const md = result.markdown || reportToMarkdownText(result);
-      setReport(result);
-      setMarkdown(md);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
-      localStorage.setItem(MARKDOWN_KEY, md);
-      toast.success("VAPT finding generated successfully");
-      return result;
-    } catch (err) {
-      const message =
-        err instanceof ReportApiError
-          ? err.message
-          : err instanceof Error
+        const md = result.markdown || reportToMarkdownText(result);
+        setReport(result);
+        setMarkdown(md);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+        localStorage.setItem(MARKDOWN_KEY, md);
+        toast.success(
+          findings.length > 1
+            ? `Full report generated (${findings.length} findings)`
+            : "VAPT finding generated successfully",
+        );
+        return result;
+      } catch (err) {
+        const message =
+          err instanceof ReportApiError
             ? err.message
-            : "Failed to generate report";
-      setError(message);
-      toast.error(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+            : err instanceof Error
+              ? err.message
+              : "Failed to generate report";
+        setError(message);
+        toast.error(message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const generate = useCallback(
+    async (payload: GenerateReportRequest) => {
+      const findings =
+        payload.findings ??
+        (payload.finding ? [payload.finding as Finding] : []);
+      return generateFromFindings(payload.target, findings as Finding[]);
+    },
+    [generateFromFindings],
+  );
 
   const updateMarkdown = useCallback((value: string) => {
     setMarkdown(value);
@@ -90,6 +102,7 @@ export function useGenerateReport() {
     isLoading,
     error,
     generate,
+    generateFromFindings,
     updateMarkdown,
     clearReport,
   };

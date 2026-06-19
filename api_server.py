@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from api.response_mapper import section_to_api_response
 from config.settings import OUTPUT_DIR, get_logger
 from crew_orchestrator import generate_and_persist
-from utils.schemas import ReportSection
+from utils.schemas import FindingInput, ReportRequest, ReportSection
 
 logger = get_logger("api")
 
@@ -37,21 +37,6 @@ app.add_middleware(
 )
 
 
-class FindingInput(BaseModel):
-    endpoint: str = ""
-    observation: str = ""
-    evidence: str = ""
-    notes: Optional[str] = None
-    request_evidence: Optional[str] = None
-    affected_roles: Optional[str] = None
-
-
-class GenerateReportRequest(BaseModel):
-    target: str
-    finding: FindingInput
-    section_prefix: Optional[str] = "5"
-
-
 class GenerateReportResponse(BaseModel):
     title: str
     severity: str
@@ -73,6 +58,8 @@ class GenerateReportResponse(BaseModel):
     markdown_filename: Optional[str] = None
     docx_filename: Optional[str] = None
     json_filename: Optional[str] = None
+    findings_count: Optional[int] = None
+    executive_summary: Optional[str] = None
 
 
 @app.get("/health")
@@ -84,6 +71,18 @@ class GenerateFullRequest(BaseModel):
     target: str
     findings: List[FindingInput]
     section_prefix: Optional[str] = "5"
+
+
+def _report_payload_from_request(body: ReportRequest) -> Dict[str, Any]:
+    findings = body.findings if body.findings else ([body.finding] if body.finding else [])
+    findings = [f for f in findings if f is not None]
+    if not findings:
+        raise HTTPException(status_code=400, detail="finding or findings is required")
+    return {
+        "target": body.target,
+        "findings": [f.model_dump(exclude_none=True) for f in findings],
+        "section_prefix": body.section_prefix,
+    }
 
 
 def _build_api_response(persisted: Dict[str, Any]) -> GenerateReportResponse:
@@ -102,18 +101,22 @@ def _build_api_response(persisted: Dict[str, Any]) -> GenerateReportResponse:
     api_data["docx_filename"] = docx_path.name if docx_path.exists() else None
     api_data["markdown_filename"] = md_path.name if md_path.exists() else None
     api_data["json_filename"] = json_path.name if json_path.exists() else None
+    api_data["findings_count"] = persisted.get("findings_count")
+    exec_summary = persisted.get("executive_summary")
+    if isinstance(exec_summary, dict):
+        api_data["executive_summary"] = exec_summary.get("executive_summary")
     return GenerateReportResponse(**api_data)
 
 
 @app.post("/generate-report", response_model=GenerateReportResponse)
-def generate_report(body: GenerateReportRequest) -> GenerateReportResponse:
-    payload = body.model_dump()
+def generate_report(body: ReportRequest) -> GenerateReportResponse:
     logger.info("API generate-report target=%s", body.target)
 
     try:
         if not body.target.strip():
             raise HTTPException(status_code=400, detail="target is required")
 
+        payload = _report_payload_from_request(body)
         persisted = generate_and_persist(payload)
         return _build_api_response(persisted)
 
