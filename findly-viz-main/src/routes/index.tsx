@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import logo from "@/assets/vapt-logo.png";
@@ -20,13 +20,17 @@ import {
   PromptInputSubmit,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
+import { SeverityBadge } from "@/components/findings/SeverityBadge";
 import { ProtectedMessageResponse } from "@/components/ProtectedMessageResponse";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getMessageText, parseReportMarkdown } from "@/lib/parseReportMarkdown";
-import { setTransferPayload } from "@/stores/reportTransferStore";
+import { useFindingsStore } from "@/store/findingsStore";
 
 const STORAGE_KEY = "vapt-chat-messages-v1";
+const VERSIONS_KEY = "vapt-chat-report-versions-v1";
+const ACTIVE_FINDING_KEY = "vapt-chat-active-finding-v1";
 
 const SAMPLE_INPUT = `{
   "target": "https://staging.acme-corp.com",
@@ -38,6 +42,21 @@ const SAMPLE_INPUT = `{
     "request_evidence": "GET /api/v2/users/1042 HTTP/1.1\\nHost: staging.acme-corp.com\\nAuthorization: Bearer eyJhbGciOi...\\nAccept: application/json"
   }
 }`;
+
+const QUICK_ACTIONS = [
+  { label: "🔴 Change Severity", message: "Change the severity in the last report. Output the complete updated report." },
+  { label: "📝 Rewrite Description", message: "Rewrite the Description section to be more technical and precise. Output the complete updated report." },
+  { label: "🔧 Add Remediation Step", message: "Add one more specific remediation recommendation. Output the complete updated report." },
+  { label: "📋 Add Step to Reproduce", message: "Add one more step to reproduce. Output the complete updated report." },
+  { label: "✏️ Make More Formal", message: "Make the entire report more formal and enterprise-ready. Output the complete updated report." },
+  { label: "🔁 Regenerate", message: "Regenerate the full report from scratch using the same finding data. Output the complete updated report." },
+] as const;
+
+interface ReportVersion {
+  id: string;
+  text: string;
+  timestamp: string;
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -79,12 +98,31 @@ function Index() {
 
 function Chat({ initial }: { initial: any[] }) {
   const navigate = useNavigate();
+  const importFindings = useFindingsStore((s) => s.importFindings);
   const { messages, sendMessage, status, setMessages, stop } = useChat({
     messages: initial,
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [versions, setVersions] = useState<ReportVersion[]>(() => {
+    try {
+      const raw = localStorage.getItem(VERSIONS_KEY);
+      return raw ? (JSON.parse(raw) as ReportVersion[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showVersions, setShowVersions] = useState(false);
+  const [activeFinding, setActiveFinding] = useState<ReturnType<typeof parseReportMarkdown> | null>(() => {
+    try {
+      const raw = localStorage.getItem(ACTIVE_FINDING_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const savedVersionIds = useRef(new Set<string>());
 
   useEffect(() => {
     try {
@@ -93,6 +131,18 @@ function Chat({ initial }: { initial: any[] }) {
       /* ignore */
     }
   }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions));
+  }, [versions]);
+
+  useEffect(() => {
+    if (activeFinding) {
+      localStorage.setItem(ACTIVE_FINDING_KEY, JSON.stringify(activeFinding));
+    } else {
+      localStorage.removeItem(ACTIVE_FINDING_KEY);
+    }
+  }, [activeFinding]);
 
   useEffect(() => {
     if (status === "ready") textareaRef.current?.focus();
@@ -104,13 +154,24 @@ function Chat({ initial }: { initial: any[] }) {
   };
 
   const handleClear = () => {
+    stop();
     setMessages([]);
+    setActiveFinding(null);
+    setVersions([]);
+    savedVersionIds.current.clear();
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(VERSIONS_KEY);
+      localStorage.removeItem(ACTIVE_FINDING_KEY);
     } catch {
       /* ignore */
     }
-    textareaRef.current?.focus();
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.value = "";
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      ta.focus();
+    }
   };
 
   const insertSample = () => {
@@ -129,9 +190,14 @@ function Chat({ initial }: { initial: any[] }) {
       return;
     }
     const parsed = parseReportMarkdown(text);
-    setTransferPayload(parsed);
-    toast.success("Finding transferred to Report Generator");
-    navigate({ to: "/report" });
+    importFindings(parsed.target, [parsed.finding]);
+    sessionStorage.setItem("vapt-chat-transfer-v1", JSON.stringify(parsed));
+    toast.success("Finding transferred to Findings Manager");
+    navigate({ to: "/findings-manager" });
+  };
+
+  const sendQuickAction = (message: string) => {
+    sendMessage({ text: message });
   };
 
   const isBusy = status === "submitted" || status === "streaming";
@@ -140,6 +206,30 @@ function Chat({ initial }: { initial: any[] }) {
   const lastAssistantText = lastAssistant ? getMessageText(lastAssistant) : "";
   const showThinking =
     isBusy && (status === "submitted" || !lastAssistantText.trim());
+
+  useEffect(() => {
+    if (status !== "ready" || !lastAssistant?.id) return;
+    const text = getMessageText(lastAssistant);
+    if (!text.includes("VAPT Security Finding Report")) return;
+    if (savedVersionIds.current.has(lastAssistant.id)) return;
+
+    savedVersionIds.current.add(lastAssistant.id);
+    const parsed = parseReportMarkdown(text);
+    setActiveFinding(parsed);
+    setVersions((prev) => [
+      {
+        id: lastAssistant.id,
+        text,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+  }, [status, lastAssistant]);
+
+  const activeTitle = useMemo(
+    () => activeFinding?.finding.title ?? "No active finding",
+    [activeFinding],
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -166,21 +256,77 @@ function Chat({ initial }: { initial: any[] }) {
             <Button variant="ghost" size="sm" asChild>
               <Link to="/report">Report</Link>
             </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/findings-manager">Findings Manager</Link>
+            </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleClear}
-              disabled={messages.length === 0 || isBusy}
+              disabled={messages.length === 0}
               className="text-muted-foreground hover:text-foreground"
             >
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              New
+              New Chat
             </Button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4">
+        {activeFinding && (
+          <Card className="mt-4 border-border/60">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4">
+              <CardTitle className="text-sm">Active Finding</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveFinding(null)}
+                className="h-7 px-2 text-xs"
+              >
+                <X className="mr-1 h-3 w-3" />
+                Clear Finding
+              </Button>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-2 pb-4 text-sm">
+              <SeverityBadge severity={activeFinding.finding.severity} />
+              <span className="font-medium">{activeTitle}</span>
+            </CardContent>
+          </Card>
+        )}
+
+        {versions.length > 0 && (
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowVersions((v) => !v)}
+              className="w-full justify-between"
+            >
+              <span>📜 Version History ({versions.length})</span>
+              {showVersions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+            {showVersions && (
+              <div className="mt-2 space-y-2">
+                {versions.map((version) => (
+                  <details
+                    key={version.id}
+                    className="rounded-md border bg-muted/20 px-3 py-2 text-xs"
+                  >
+                    <summary className="cursor-pointer font-mono text-muted-foreground">
+                      {new Date(version.timestamp).toLocaleString()}
+                    </summary>
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">
+                      {version.text.slice(0, 1200)}
+                      {version.text.length > 1200 ? "…" : ""}
+                    </pre>
+                  </details>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <Conversation className="flex-1">
           <ConversationContent className="px-0">
             {messages.length === 0 ? (
@@ -207,6 +353,7 @@ function Chat({ initial }: { initial: any[] }) {
                 const isCompleteAssistant =
                   isAssistant && (!isBusy || m.id !== lastAssistantId);
                 const text = getMessageText(m);
+                const isReport = text.includes("VAPT Security Finding Report");
 
                 return (
                   <Message from={m.role} key={m.id}>
@@ -223,14 +370,30 @@ function Chat({ initial }: { initial: any[] }) {
                         ) : isBusy && m.id === lastAssistantId ? (
                           <ThinkingIndicator isActive variant="bubble" />
                         ) : null}
-                        {isCompleteAssistant && text.trim() && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleTransfer(m)}
-                          >
-                            📋 Transfer to Report
-                          </Button>
+                        {isCompleteAssistant && isReport && text.trim() && (
+                          <>
+                            <div className="flex flex-wrap gap-2">
+                              {QUICK_ACTIONS.map((action) => (
+                                <Button
+                                  key={action.label}
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs"
+                                  disabled={isBusy}
+                                  onClick={() => sendQuickAction(action.message)}
+                                >
+                                  {action.label}
+                                </Button>
+                              ))}
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleTransfer(m)}
+                            >
+                              📋 Transfer to Report
+                            </Button>
+                          </>
                         )}
                       </div>
                     )}

@@ -6,6 +6,31 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class FindingInput(BaseModel):
+    """Raw finding payload from API / CLI input."""
+
+    id: Optional[str] = None
+    title: Optional[str] = None
+    severity: Optional[str] = None
+    owasp: Optional[str] = None
+    wstg: Optional[str] = None
+    endpoint: Optional[str] = None
+    observation: Optional[str] = None
+    evidence: Optional[str] = None
+    steps_to_reproduce: Optional[List[str]] = None
+    notes: Optional[str] = None
+    remediation: Optional[List[str]] = None
+    request_evidence: Optional[str] = None
+    affected_roles: Optional[str] = None
+
+
+class ReportRequest(BaseModel):
+    target: str
+    finding: Optional[FindingInput] = None
+    findings: Optional[List[FindingInput]] = None
+    section_prefix: Optional[str] = "5"
+
+
 class FindingAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -111,7 +136,8 @@ def enrich_report_section(
     data = section.model_dump()
 
     if not data.get("finding_id"):
-        data["finding_id"] = f"VAPT-{index:03d}"
+        custom_id = raw_finding.get("id") if raw_finding else None
+        data["finding_id"] = custom_id or f"VAPT-{index:03d}"
     if not data.get("section_number"):
         data["section_number"] = f"{section_prefix}.{index}"
 
