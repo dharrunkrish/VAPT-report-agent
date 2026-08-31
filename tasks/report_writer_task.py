@@ -32,13 +32,17 @@ Map OWASP Top 10 2021/2025 and WSTG where applicable. Use professional enterpris
 
 
 def make_report_writer_task(agent) -> Task:
-    return Task(
-        description=(
-            "Write the final enterprise VAPT finding for target {target} using all prior "
-            "task outputs and this raw finding:\n{finding}\n\n"
-            "Produce: title, severity, OWASP, WSTG, CWE, description, business impact, "
-            "affected_endpoints table rows, steps to reproduce, remediation, references."
-        ),
-        expected_output=JSON_SCHEMA_HINT.strip(),
-        agent=agent,
-    )
+  return Task(
+    description=(
+      "Write the final enterprise VAPT finding for target {target} using all prior "
+      "task outputs and this raw finding:\n{finding}\n\n"
+      "Produce: title, severity, OWASP, WSTG, CWE, description, business impact, "
+      "affected_endpoints table rows, steps to reproduce, remediation, references. "
+      "Use only explicit evidence and retrieved RAG context. Separate Confirmed facts, "
+      "AI inference, and Recommendations in the narrative. If no evidence exists, use N/A; "
+      "if OWASP/CWE/WSTG cannot be confidently mapped, return 'Requires manual verification'.\n\n"
+      "JSON_SCHEMA_HINT:\n" + JSON_SCHEMA_HINT.strip()
+    ),
+    expected_output=JSON_SCHEMA_HINT.strip(),
+    agent=agent,
+  )

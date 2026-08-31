@@ -146,26 +146,6 @@ class VaptDocxReportBuilder:
         meta.add_run(f"Total findings: {findings_count}\n").font.name = FONT_NAME
         meta.paragraph_format.space_after = Pt(18)
 
-    def add_table_of_contents(self, sections: List[ReportSection]) -> None:
-        heading = self.document.add_paragraph()
-        run = heading.add_run("Table of Contents")
-        run.bold = True
-        run.font.name = FONT_NAME
-        run.font.size = FONT_SIZE_HEADING
-        heading.paragraph_format.space_before = Pt(6)
-        heading.paragraph_format.space_after = Pt(8)
-
-        for index, section in enumerate(sections, start=1):
-            section_num = section.section_number or f"{self.section_prefix}.{index}"
-            item = self.document.add_paragraph(
-                f"{section_num}  {section.title}  [{section.severity.upper()}]",
-                style="List Bullet",
-            )
-            _set_paragraph_font(item)
-
-        spacer = self.document.add_paragraph()
-        spacer.paragraph_format.space_after = Pt(14)
-
     def add_executive_summary(self, summary: ExecutiveSummary) -> None:
         heading = self.document.add_paragraph()
         run = heading.add_run("Executive Summary")
@@ -216,8 +196,8 @@ class VaptDocxReportBuilder:
         rows_data = [
             ("ID", finding_id, False),
             ("Severity", section.severity.upper(), True),
-            ("OWASP", section.owasp or "N/A", False),
-            ("WSTG", section.wstg or "N/A", False),
+            ("OWASP", section.owasp or "Requires manual verification", False),
+            ("WSTG", section.wstg or "Requires manual verification", False),
         ]
 
         table = self.document.add_table(rows=len(rows_data), cols=2)
@@ -353,32 +333,13 @@ def build_vapt_docx(
     executive_summary: Optional[ExecutiveSummary] = None,
     section_prefix: str = DEFAULT_SECTION_PREFIX,
 ) -> Document:
-    return combine_findings_to_docx(
-        target=target,
-        sections=sections,
-        generated_at=generated_at,
-        executive_summary=executive_summary,
-        section_prefix=section_prefix,
-    )
-
-
-def combine_findings_to_docx(
-    target: str,
-    sections: List[ReportSection],
-    *,
-    generated_at: str,
-    executive_summary: Optional[ExecutiveSummary] = None,
-    section_prefix: str = DEFAULT_SECTION_PREFIX,
-) -> Document:
-    """Build a combined DOCX with TOC, numbered findings, and executive summary at the end."""
     builder = VaptDocxReportBuilder(target=target, section_prefix=section_prefix)
     builder.add_cover_block(generated_at, len(sections))
-    builder.add_table_of_contents(sections)
-
-    for index, section in enumerate(sections, start=1):
-        builder.add_finding(section, index)
 
     if executive_summary:
         builder.add_executive_summary(executive_summary)
+
+    for index, section in enumerate(sections, start=1):
+        builder.add_finding(section, index)
 
     return builder.document

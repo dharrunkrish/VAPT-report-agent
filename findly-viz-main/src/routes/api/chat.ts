@@ -116,11 +116,12 @@ export const Route = createFileRoute("/api/chat")({
     handlers: {
       POST: async ({ request }) => {
         const { messages }: { messages: UIMessage[] } = await request.json();
-
         const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) {
           return new Response("GROQ_API_KEY not configured", { status: 500 });
         }
+
+        const groqModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
         const provider = createOpenAICompatible({
           name: "groq",
@@ -128,13 +129,115 @@ export const Route = createFileRoute("/api/chat")({
           baseURL: "https://api.groq.com/openai/v1",
         });
 
-        const result = streamText({
-          model: provider.chatModel("llama-3.3-70b-versatile"),
-          system: SYSTEM_PROMPT,
-          messages: await convertToModelMessages(messages),
-        });
+        // sanitize conversation messages before sending to Groq/OpenAI-compatible provider
+        const sanitizeChatMessages = (msgs: UIMessage[]) => {
+          const out: UIMessage[] = [];
 
-        return result.toUIMessageStreamResponse();
+          for (const m of msgs || []) {
+            const role = (m as any).role;
+
+            // Extract only text parts and discard any parts that may contain reasoning or provider metadata
+            const parts = Array.isArray((m as any).parts) ? (m as any).parts : [];
+
+            const textParts: Array<{ type: string; text: string }> = [];
+            for (const p of parts) {
+              if (!p || typeof p !== "object") continue;
+              const pType = String(p.type || "").toLowerCase();
+
+              // discard any explicit reasoning parts
+              if (pType === "reasoning" || pType === "internal" || pType === "tool") continue;
+
+              // keep only plain text parts
+              if (pType === "text" && typeof p.text === "string" && p.text.trim() !== "") {
+                textParts.push({ type: "text", text: p.text });
+              }
+            }
+
+            // For assistant messages, if there's no visible text left, skip the message
+            if (role === "assistant" && textParts.length === 0) continue;
+
+            // Build a minimal safe UIMessage containing only role, id (if present), and the filtered text parts
+            const safeMsg: any = { role };
+            if ((m as any).id) safeMsg.id = (m as any).id;
+            if (textParts.length > 0) safeMsg.parts = textParts;
+
+            out.push(safeMsg as UIMessage);
+          }
+
+          return out;
+        };
+
+        const sanitizedUI = sanitizeChatMessages(messages || []);
+
+        // Temporary server-side logging: show roles and keys only (never log message content or API keys)
+        try {
+          console.info(
+            "/api/chat sanitized messages:",
+            sanitizedUI.map((m) => ({ role: (m as any).role, keys: Object.keys(m as any) })),
+          );
+        } catch (e) {
+          // swallow logging errors to avoid breaking the request
+        }
+
+        // Convert the cleaned UI messages to model messages using the SDK, then further inspect/sanitize the result
+        const modelMessages = await convertToModelMessages(sanitizedUI);
+
+        // Ensure modelMessages are plain objects with only role + content (string). Remove any nested reasoning fields.
+        const cleanedModelMessages = (modelMessages || []).map((mm: any, idx: number) => {
+          const role = mm.role;
+
+          // Determine content text: if SDK returned structured content, extract concatenated text
+          let contentText = "";
+          if (typeof mm.content === "string") {
+            contentText = mm.content;
+          } else if (Array.isArray(mm.content)) {
+            // join any text-like parts
+            try {
+              contentText = mm.content
+                .map((c: any) => (typeof c === "string" ? c : c?.text ?? ""))
+                .filter(Boolean)
+                .join("\n");
+            } catch {
+              contentText = "";
+            }
+          } else if (mm.message && typeof mm.message === "string") {
+            contentText = mm.message;
+          }
+
+          // final model message: only role and content
+          return { role, content: contentText };
+        }).filter((m: any) => !(m.role === "assistant" && (!m.content || String(m.content).trim() === "")));
+
+        // Final debug: log index, role, content type, content length, and keys (never actual content)
+        try {
+          console.info(
+            "/api/chat final model payload:",
+            cleanedModelMessages.map((m: any, i: number) => ({
+              index: i,
+              role: m.role,
+              contentType: typeof m.content,
+              contentLength: m.content ? String(m.content).length : 0,
+              keys: Object.keys(m),
+            })),
+          );
+        } catch (e) {
+          /* ignore */
+        }
+
+        try {
+          const result = streamText({
+            model: provider.chatModel(groqModel),
+            system: SYSTEM_PROMPT,
+            messages: cleanedModelMessages,
+          });
+
+          return result.toUIMessageStreamResponse();
+        } catch (err: any) {
+          const msg = err?.message ?? String(err ?? "Unknown error");
+          // Prefer a clear client-facing message while logging the original error server-side
+          console.error("/api/chat model error:", msg, "model=", groqModel);
+          return new Response(`Model error: ${msg}`, { status: 502 });
+        }
       },
     },
   },

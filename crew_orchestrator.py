@@ -18,6 +18,7 @@ from tasks import (
     make_report_writer_task,
     make_severity_classification_task,
 )
+from utils.accuracy import normalize_report_section
 from utils.docx_report import build_vapt_docx
 from utils.llm import get_llm
 from utils.output import save_docx, save_findings_json, save_markdown
@@ -91,7 +92,15 @@ def process_single_finding(
 
     inputs = {"target": target, "finding": finding_json}
     endpoint = finding.get("endpoint", "unknown")
-    logger.info("Running crew for finding %s (endpoint=%s)", index, endpoint)
+    model_name = getattr(llm, "model", "<unknown>")
+    structured_disabled = getattr(llm, "_structured_outputs_disabled", False)
+    logger.info(
+        "Running crew for finding %s (endpoint=%s) model=%s structured_outputs_disabled=%s",
+        index,
+        endpoint,
+        model_name,
+        structured_disabled,
+    )
 
     _kickoff_crew(crew, inputs)
 
@@ -110,6 +119,8 @@ def process_single_finding(
 
     if not section.cwe and severity.cwe_ids:
         section = section.model_copy(update={"cwe": ", ".join(severity.cwe_ids)})
+
+    section = normalize_report_section(section)
 
     section = enrich_report_section(
         section,

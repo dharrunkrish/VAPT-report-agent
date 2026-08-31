@@ -12,13 +12,13 @@ def _bullet_list(items: List[str]) -> str:
 
 def render_finding_section(section: ReportSection, index: int) -> str:
     cvss = f"{section.cvss_score:.1f}" if section.cvss_score is not None else "N/A"
-    cwe = section.cwe or "N/A"
-    owasp = section.owasp or "N/A"
-    wstg = section.wstg or "N/A"
+    cwe = section.cwe or "Requires manual verification"
+    owasp = section.owasp or "Requires manual verification"
+    wstg = section.wstg or "Requires manual verification"
     finding_id = section.finding_id or f"VAPT-{index:03d}"
     section_num = section.section_number or str(index)
-    description = section.description or section.technical_description or ""
-    steps = "\n".join(f"{i}. {step}" for i, step in enumerate(section.steps_to_reproduce, 1))
+    description = section.description or section.technical_description or "N/A"
+    steps = "\n".join(f"{i}. {step}" for i, step in enumerate(section.steps_to_reproduce, 1)) or "1. N/A"
 
     endpoints_md = ""
     if section.affected_endpoints:

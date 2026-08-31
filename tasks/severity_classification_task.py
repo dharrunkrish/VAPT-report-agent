@@ -19,8 +19,12 @@ def make_severity_classification_task(agent) -> Task:
     return Task(
         description=(
             "Using the finding analysis from the previous task and raw finding for "
-            "target {target}, classify severity and map to OWASP and WSTG.\n\n"
-            "Raw finding JSON:\n{finding}"
+            "target {target}, classify severity and map to OWASP and WSTG only when supported by evidence.\n\n"
+            "Raw finding JSON:\n{finding}\n\n"
+            "Never invent evidence, CVSS metrics, CWE/OWASP/WSTG mappings, or exploitation proof. "
+            "If the evidence is insufficient or the classification is not supported by authoritative context, "
+            "return 'Requires manual verification' instead of guessing.\n\n"
+            "JSON_SCHEMA_HINT:\n" + JSON_SCHEMA_HINT.strip()
         ),
         expected_output=JSON_SCHEMA_HINT.strip(),
         agent=agent,
