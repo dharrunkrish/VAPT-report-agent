@@ -32,7 +32,7 @@ for proxy_name in (
 # Reduce CrewAI / OpenTelemetry overhead at import time
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
-GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "REMOVED_GROQ_SECRET")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "outputs")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
