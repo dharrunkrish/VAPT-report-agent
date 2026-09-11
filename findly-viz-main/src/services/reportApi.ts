@@ -1,8 +1,18 @@
+import type { Severity } from "@/store/findingsStore";
+import { normalizeSeverity } from "@/lib/severity";
+
 export interface FindingInput {
-  endpoint: string;
-  observation: string;
-  evidence: string;
+  id?: string | null;
+  title?: string;
+  severity?: Severity | string;
+  owasp?: string;
+  wstg?: string;
+  endpoint?: string;
+  observation?: string;
+  evidence?: string;
+  steps_to_reproduce?: string[];
   notes?: string;
+  remediation?: string[];
   request_evidence?: string;
   affected_roles?: string;
 }
@@ -42,6 +52,8 @@ export interface GenerateReportResponse {
   markdown_filename?: string | null;
   docx_filename?: string | null;
   json_filename?: string | null;
+  findings_count?: number;
+  executive_summary?: string | null;
 }
 
 export class ReportApiError extends Error {
@@ -72,17 +84,15 @@ async function parseErrorResponse(response: Response): Promise<string> {
 export async function generateReport(
   payload: GenerateReportRequest,
 ): Promise<GenerateReportResponse> {
-  const body = payload.finding
-    ? payload
-    : {
-        target: payload.target,
-        finding: payload.findings?.[0] ?? {
-          endpoint: "",
-          observation: "",
-          evidence: "",
-        },
-        section_prefix: payload.section_prefix,
-      };
+  const findings =
+    payload.findings ??
+    (payload.finding ? [payload.finding] : []);
+
+  const body = {
+    target: payload.target,
+    findings,
+    section_prefix: payload.section_prefix,
+  };
 
   const response = await fetch(`${API_BASE}/generate-report`, {
     method: "POST",
@@ -104,26 +114,12 @@ export interface GenerateFullReportRequest {
   section_prefix?: string;
 }
 
-export interface GenerateFullReportResponse extends GenerateReportResponse {
-  findings_count?: number;
-  executive_summary?: string | null;
-}
+export interface GenerateFullReportResponse extends GenerateReportResponse {}
 
 export async function generateFullReport(
   payload: GenerateFullReportRequest,
 ): Promise<GenerateFullReportResponse> {
-  const response = await fetch(`${API_BASE}/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const message = await parseErrorResponse(response);
-    throw new ReportApiError(message, response.status);
-  }
-
-  return response.json();
+  return generateReport(payload);
 }
 
 export async function downloadReportFile(
@@ -197,29 +193,44 @@ ${remediation}${refs}
 `;
 }
 
-export function findingsToPreviewMarkdown(target: string, findings: FindingInput[]): string {
-  if (!findings || findings.length === 0) {
-    return "# No findings to preview\n\nAdd findings to see a preview of the report structure.";
-  }
-
-  const findingSections = findings
-    .map((finding, idx) => {
-      const endpointLine = finding.endpoint ? `**Endpoint:** ${finding.endpoint}` : "";
-      const observationSection = finding.observation ? `### Observation\n${finding.observation}` : "";
-      const evidenceSection = finding.evidence ? `### Evidence\n${finding.evidence}` : "";
-      const notesSection = finding.notes ? `### Notes\n${finding.notes}` : "";
-
-      return `## Finding ${idx + 1}\n\n${endpointLine}\n\n${observationSection}\n\n${evidenceSection}\n\n${notesSection}`.trim();
-    })
-    .join("\n\n---\n\n");
-
-  return `# Security Assessment Preview
+export function findingsToPreviewMarkdown(
+  target: string,
+  findings: FindingInput[],
+): string {
+  return findings
+    .map((f, i) => {
+      const steps = (f.steps_to_reproduce ?? [])
+        .map((s, j) => `${j + 1}. ${s}`)
+        .join("\n");
+      const remediation = (f.remediation ?? []).map((r) => `- ${r}`).join("\n");
+      return `## ${i + 1}. ${f.title ?? "Untitled"} (${f.severity ?? "MEDIUM"})
 
 **Target:** ${target}
-**Finding Count:** ${findings.length}
+**ID:** ${f.id ?? "N/A"}
+**OWASP:** ${f.owasp ?? "N/A"}
+**WSTG:** ${f.wstg ?? "N/A"}
+**Endpoint:** ${f.endpoint ?? "N/A"}
 
----
+### Observation
+${f.observation ?? ""}
 
-${findingSections}
+### Evidence
+${f.evidence ?? ""}
+
+### Steps to Reproduce
+${steps || "N/A"}
+
+### Notes
+${f.notes ?? ""}
+
+### Remediation
+${remediation || "N/A"}
+
+### Request Evidence
+\`\`\`http
+${f.request_evidence ?? ""}
+\`\`\`
 `;
+    })
+    .join("\n---\n\n");
 }

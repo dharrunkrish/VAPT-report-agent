@@ -15,7 +15,7 @@ from api.response_mapper import section_to_api_response
 from config.settings import OUTPUT_DIR, get_logger
 from context.service import ProjectContextService
 from crew_orchestrator import generate_and_persist
-from utils.schemas import ReportSection
+from utils.schemas import FindingInput, ReportRequest, ReportSection
 from context import ApplicationContext, ContextManager, ProjectFinding
 
 logger = get_logger("api")
@@ -42,13 +42,6 @@ app.add_middleware(
 )
 
 
-class FindingInput(BaseModel):
-    endpoint: str = ""
-    observation: str = ""
-    evidence: str = ""
-    notes: Optional[str] = None
-    request_evidence: Optional[str] = None
-    affected_roles: Optional[str] = None
 
 class CreateProjectRequest(BaseModel):
     project_id: str
