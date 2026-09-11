@@ -13,6 +13,7 @@ import { Route as ReportRouteImport } from './routes/report'
 import { Route as FindingsManagerRouteImport } from './routes/findings-manager'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiAssistRouteImport } from './routes/api/assist'
 
 const ReportRoute = ReportRouteImport.update({
   id: '/report',
@@ -34,17 +35,24 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAssistRoute = ApiAssistRouteImport.update({
+  id: '/api/assist',
+  path: '/api/assist',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/findings-manager': typeof FindingsManagerRoute
   '/report': typeof ReportRoute
+  '/api/assist': typeof ApiAssistRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/findings-manager': typeof FindingsManagerRoute
   '/report': typeof ReportRoute
+  '/api/assist': typeof ApiAssistRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,28 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/findings-manager': typeof FindingsManagerRoute
   '/report': typeof ReportRoute
+  '/api/assist': typeof ApiAssistRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/findings-manager' | '/report' | '/api/chat'
+  fullPaths: '/' | '/findings-manager' | '/report' | '/api/assist' | '/api/chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/findings-manager' | '/report' | '/api/chat'
-  id: '__root__' | '/' | '/findings-manager' | '/report' | '/api/chat'
+  to: '/' | '/findings-manager' | '/report' | '/api/assist' | '/api/chat'
+  id:
+    | '__root__'
+    | '/'
+    | '/findings-manager'
+    | '/report'
+    | '/api/assist'
+    | '/api/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FindingsManagerRoute: typeof FindingsManagerRoute
   ReportRoute: typeof ReportRoute
+  ApiAssistRoute: typeof ApiAssistRoute
   ApiChatRoute: typeof ApiChatRoute
 }
 
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/assist': {
+      id: '/api/assist'
+      path: '/api/assist'
+      fullPath: '/api/assist'
+      preLoaderRoute: typeof ApiAssistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -106,6 +129,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FindingsManagerRoute: FindingsManagerRoute,
   ReportRoute: ReportRoute,
+  ApiAssistRoute: ApiAssistRoute,
   ApiChatRoute: ApiChatRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,3 +1,13 @@
+/** Create a message id that works across runtimes with and without crypto.randomUUID support. */
+function createMessageId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+
+  return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /** Call the streaming chat API and collect the full text response. */
 export async function requestChatCompletion(userText: string): Promise<string> {
   const response = await fetch("/api/chat", {
@@ -6,7 +16,7 @@ export async function requestChatCompletion(userText: string): Promise<string> {
     body: JSON.stringify({
       messages: [
         {
-          id: crypto.randomUUID(),
+          id: createMessageId(),
           role: "user",
           parts: [{ type: "text", text: userText }],
         },

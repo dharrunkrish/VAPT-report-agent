@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { requestChatCompletion } from "@/lib/chatAssist";
+import { requestStructuredAssist } from "@/lib/assist";
 import { SEVERITY_OPTIONS, severityBadgeClass } from "@/lib/severity";
 import type { Finding, Severity } from "@/store/findingsStore";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,6 @@ export function FindingFormFields({
         : field === "remediation"
           ? (finding.remediation ?? []).join("\n")
           : String(finding[field] ?? "");
-
     if (!current.trim()) {
       toast.error(`Enter a value for ${label} first`);
       return;
@@ -67,19 +67,32 @@ export function FindingFormFields({
 
     setAiLoading(field);
     try {
-      const result = await requestChatCompletion(
-        `Improve this ${label} for a VAPT report. Return ONLY the improved text, no preamble:\n\n${current}`,
-      );
+      // Use structured assist so AI Assistance always returns validated JSON
+      const structured = await requestStructuredAssist({ finding, mode: "field", field: String(field) });
+      const value = structured[field as string];
       if (field === "steps_to_reproduce") {
-        patch({ steps_to_reproduce: result.split("\n").filter(Boolean) });
+        patch({ steps_to_reproduce: (value as string[] | undefined) ?? [] });
       } else if (field === "remediation") {
-        patch({ remediation: result.split("\n").filter(Boolean) });
+        patch({ remediation: (value as string[] | undefined) ?? [] });
       } else {
-        patch({ [field]: result } as Partial<Finding>);
+        patch({ [field]: value } as Partial<Finding>);
       }
       toast.success(`${label} updated`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "AI assist failed");
+      // Fallback: try conversational assist for small edits
+      try {
+        const result = await requestChatCompletion(`Improve this ${label} for a VAPT report. Return ONLY the improved text, no preamble:\n\n${current}`);
+        if (field === "steps_to_reproduce") {
+          patch({ steps_to_reproduce: result.split("\n").filter(Boolean) });
+        } else if (field === "remediation") {
+          patch({ remediation: result.split("\n").filter(Boolean) });
+        } else {
+          patch({ [field]: result } as Partial<Finding>);
+        }
+        toast.success(`${label} updated (conversational fallback)`);
+      } catch (err2) {
+        toast.error(err instanceof Error ? err.message : "AI assist failed");
+      }
     } finally {
       setAiLoading(null);
     }
@@ -88,14 +101,7 @@ export function FindingFormFields({
   const runAutoFill = async () => {
     setAiLoading("autofill");
     try {
-      const prompt = `Given this partial VAPT finding data, infer and fill ALL missing fields. Return ONLY valid JSON with keys: id, title, severity, owasp, wstg, endpoint, observation, evidence, steps_to_reproduce (array), notes, remediation (array), request_evidence.
-
-Current data:
-${JSON.stringify(finding, null, 2)}`;
-      const result = await requestChatCompletion(prompt);
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("AI did not return JSON");
-      const parsed = JSON.parse(jsonMatch[0]) as Partial<Finding>;
+      const parsed = await requestStructuredAssist({ finding, mode: "autofill" });
       patch({
         id: finding.id || parsed.id,
         title: finding.title || parsed.title || finding.title,

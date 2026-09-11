@@ -1,12 +1,29 @@
+# Sensitive VAPT/customer data
+training_reports/
+rag/
+outputs/
+
+# Local environment/secrets
 .env
+.env.*
+!.env.example
+
+# Python
 .venv/
-venv/
 __pycache__/
 *.pyc
-outputs/*
-!outputs/.gitkeep
-logs/*
-!logs/.gitkeep
-*.egg-info/
-dist/
-build/
+
+# IDE / local configuration
+.idea/
+.vscode/
+
+# Local shell/environment files
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.profile
+.zprofile
+.zshrc
+.ripgreprc
+.mcp.json

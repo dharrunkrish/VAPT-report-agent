@@ -32,13 +32,25 @@ Map OWASP Top 10 2021/2025 and WSTG where applicable. Use professional enterpris
 
 
 def make_report_writer_task(agent) -> Task:
-    return Task(
-        description=(
-            "Write the final enterprise VAPT finding for target {target} using all prior "
-            "task outputs and this raw finding:\n{finding}\n\n"
-            "Produce: title, severity, OWASP, WSTG, CWE, description, business impact, "
-            "affected_endpoints table rows, steps to reproduce, remediation, references."
-        ),
-        expected_output=JSON_SCHEMA_HINT.strip(),
-        agent=agent,
-    )
+  return Task(
+    description=(
+      "Write the final enterprise VAPT finding for target {target} using the project context, "
+      "prior analysis, prior severity classification, and the raw tester evidence.\n\n"
+      "Project Context (application/environment context only):\n{project_context}\n\n"
+      "Raw finding JSON:\n{finding}\n\n"
+      "Finding Analysis:\n{analysis}\n\n"
+      "Severity Classification:\n{severity}\n\n"
+      "Use project context to interpret the application context and tailor language or recommendations only when explicitly supported. "
+      "Project context is not vulnerability evidence and does not prove vulnerability behavior, exploit success, architecture details, or business impact. "
+      "Tester-provided evidence remains the source of truth. Use only explicit evidence, confirmed facts, and relevant retrieved RAG context. "
+      "Separate Confirmed facts, AI inference, Recommendations, and Manual Verification requirements in the narrative. "
+      "Do not treat technologies, authentication mechanisms, roles, assets, or notes as proof of a vulnerability. "
+      "If a fact is missing or a classification is not supported, use N/A or 'Requires manual verification' rather than guessing.\n\n"
+      "Produce: title, severity, OWASP, WSTG, CWE, description, business impact, "
+      "affected_endpoints table rows, steps to reproduce, remediation, references. "
+      "If no evidence exists, use N/A; if OWASP/CWE/WSTG cannot be confidently mapped, return 'Requires manual verification'.\n\n"
+      "JSON_SCHEMA_HINT:\n" + JSON_SCHEMA_HINT.strip()
+    ),
+    expected_output=JSON_SCHEMA_HINT.strip(),
+    agent=agent,
+  )

@@ -9,11 +9,31 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 load_dotenv(PROJECT_ROOT / ".env")
 
+# Some local proxy setups set ALL_PROXY to socks5h, which httpx rejects before our app code runs.
+# Clear unsupported proxy env vars early so CrewAI/LiteLLM can import safely in local development.
+for proxy_name in (
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "FTP_PROXY",
+    "ftp_proxy",
+    "GRPC_PROXY",
+    "grpc_proxy",
+    "RSYNC_PROXY",
+    "rsync_proxy",
+):
+    value = os.environ.get(proxy_name)
+    if value and value.lower().startswith("socks5h://"):
+        os.environ.pop(proxy_name, None)
+
 # Reduce CrewAI / OpenTelemetry overhead at import time
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "outputs")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 

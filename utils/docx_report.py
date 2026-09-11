@@ -216,8 +216,8 @@ class VaptDocxReportBuilder:
         rows_data = [
             ("ID", finding_id, False),
             ("Severity", section.severity.upper(), True),
-            ("OWASP", section.owasp or "N/A", False),
-            ("WSTG", section.wstg or "N/A", False),
+            ("OWASP", section.owasp or "Requires manual verification", False),
+            ("WSTG", section.wstg or "Requires manual verification", False),
         ]
 
         table = self.document.add_table(rows=len(rows_data), cols=2)

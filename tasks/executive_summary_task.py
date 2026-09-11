@@ -15,12 +15,13 @@ Return ONLY a valid JSON object (no markdown fences) with these keys:
 
 
 def make_executive_summary_task(agent) -> Task:
-    return Task(
-        description=(
-            "Create an executive summary for target: {target}\n\n"
-            "All finding report sections (JSON array):\n{report_sections_json}\n\n"
-            "Summarize risk posture, highlight critical issues, and list remediation priorities."
-        ),
-        expected_output=JSON_SCHEMA_HINT.strip(),
-        agent=agent,
-    )
+  return Task(
+    description=(
+      "Create an executive summary for target: {target}\n\n"
+      "All finding report sections (JSON array):\n{report_sections_json}\n\n"
+      "Summarize risk posture, highlight critical issues, and list remediation priorities.\n\n"
+      "JSON_SCHEMA_HINT:\n" + JSON_SCHEMA_HINT.strip()
+    ),
+    expected_output=JSON_SCHEMA_HINT.strip(),
+    agent=agent,
+  )
