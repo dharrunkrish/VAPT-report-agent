@@ -4,22 +4,20 @@ from crewai import LLM
 
 logger = get_logger("llm")
 
+GROQ_OPENAI_COMPATIBLE_BASE_URL = "https://api.groq.com/openai/v1"
+
 _shared_llm: LLM | None = None
 
 
 def normalize_model_name(model_name: str) -> str:
-    """Normalize model names for Groq/LiteLLM."""
-    candidate = model_name.strip()
+    """Normalize model names while preserving explicit Groq-compatible model IDs."""
+    candidate = (model_name or "").strip()
 
     if not candidate:
-        return "groq/openai/gpt-oss-120b"
+        return "openai/gpt-oss-120b"
 
-    if candidate.startswith("groq/"):
+    if candidate.startswith(("groq/", "openai/")):
         return candidate
-
-    # Preserve the full Groq model ID.
-    if candidate.startswith("openai/"):
-        return f"groq/{candidate}"
 
     return f"groq/{candidate}"
 
@@ -42,7 +40,10 @@ def get_llm(temperature: float = 0.2, *, force_new: bool = False) -> LLM:
     llm = LLM(
         model=model_name,
         api_key=GROQ_API_KEY,
+        base_url=GROQ_OPENAI_COMPATIBLE_BASE_URL,
+        custom_llm_provider="groq",
         temperature=temperature,
+        tool_choice="none",
     )
 
     # Prevent CrewAI/instructor from automatically enabling structured/tool outputs

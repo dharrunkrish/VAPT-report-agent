@@ -10,6 +10,7 @@ from agents import (
     make_report_writer_agent,
     make_severity_agent,
 )
+from context.service import ProjectContextService
 from config.report_styles import DEFAULT_SECTION_PREFIX
 from config.settings import get_logger
 from tasks import (
@@ -33,6 +34,40 @@ from utils.schemas import (
 )
 
 logger = get_logger("orchestrator")
+_project_context_service: Optional[ProjectContextService] = ProjectContextService()
+
+
+def set_project_context_service(service: ProjectContextService) -> None:
+    global _project_context_service
+    _project_context_service = service
+
+
+def _serialize_project_context(project_context: Dict[str, Any]) -> str:
+    return json.dumps(project_context, ensure_ascii=False, sort_keys=True)
+
+
+def _resolve_project_context(payload: Dict[str, Any], finding: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    project_id = payload.get("project_id") or (finding or {}).get("project_id")
+    finding_id = payload.get("finding_id") or (finding or {}).get("finding_id")
+
+    if not project_id or not finding_id:
+        return None
+
+    service = _project_context_service
+    if service is None:
+        return None
+
+    try:
+        context = service.get_finding_context(str(project_id), str(finding_id))
+    except FileNotFoundError:
+        logger.warning(
+            "Project context requested for %s/%s but not found; continuing without it.",
+            project_id,
+            finding_id,
+        )
+        return None
+
+    return _serialize_project_context(context["project_context"])
 
 
 def normalize_input(payload: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]], str]:
@@ -71,6 +106,7 @@ def process_single_finding(
     *,
     index: int,
     section_prefix: str,
+    project_context: Optional[str] = None,
 ) -> ReportSection:
     finding_json = json.dumps(finding, ensure_ascii=False)
 
@@ -81,6 +117,8 @@ def process_single_finding(
     analysis_task = make_finding_analysis_task(analysis_agent)
     severity_task = make_severity_classification_task(severity_agent)
     report_task = make_report_writer_task(writer_agent)
+    severity_task.context = [analysis_task]
+    report_task.context = [analysis_task, severity_task]
 
     crew = Crew(
         agents=[analysis_agent, severity_agent, writer_agent],
@@ -90,7 +128,14 @@ def process_single_finding(
         memory=False,
     )
 
-    inputs = {"target": target, "finding": finding_json}
+    inputs = {
+        "target": target,
+        "finding": finding_json,
+        "analysis": "Use the previous finding-analysis output and keep it distinct from raw tester evidence.",
+        "severity": "Use the severity classification output and distinguish it from raw tester evidence.",
+        "project_context": project_context or "",
+    }
+
     endpoint = finding.get("endpoint", "unknown")
     model_name = getattr(llm, "model", "<unknown>")
     structured_disabled = getattr(llm, "_structured_outputs_disabled", False)
@@ -175,12 +220,14 @@ def generate_vapt_report(payload: Dict[str, Any]) -> Dict[str, Any]:
     total = len(findings)
     for index, finding in enumerate(findings, 1):
         logger.info("Processing finding %s/%s", index, total)
+        project_context = _resolve_project_context(payload, finding)
         section = process_single_finding(
             target,
             finding,
             llm,
             index=index,
             section_prefix=section_prefix,
+            project_context=project_context,
         )
         sections.append(section)
 
